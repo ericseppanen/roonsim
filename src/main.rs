@@ -1,5 +1,9 @@
 use bevy::prelude::*;
+use bevy::sprite::Anchor;
 use bevy::window::{PresentMode, PrimaryWindow, WindowResolution};
+use grid::GridPosition;
+
+mod grid;
 
 const PRESENT_MODE: PresentMode = if cfg!(target_family = "wasm") {
     PresentMode::Fifo
@@ -35,17 +39,19 @@ fn main() {
                 })
                 .build(),
         )
+        .insert_resource(ClearColor(Color::srgb(0.3, 0.3, 0.3)))
         .add_event::<NewTileEvent>()
         .add_systems(Startup, setup)
-        .add_systems(Update, (mouse_button_input,))
+        .add_systems(Update, (placement_cursor_moved, mouse_button_input))
         .add_systems(Update, spawn_new_tile.after(mouse_button_input))
         .run();
 }
 
-fn setup(mut commands: Commands, _asset_server: Res<AssetServer>) {
+fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     // Add the MainCamera marker component.
     // FIXME: is this necessary?
     commands.spawn((Camera2d, MainCamera));
+    spawn_ghost_tile(&mut commands, asset_server);
 }
 
 /// Used to help identify our main camera
@@ -57,7 +63,39 @@ struct MainCamera;
 /// User has requested placing a new tile.
 #[derive(Event)]
 pub struct NewTileEvent {
-    position: Vec2,
+    position: GridPosition,
+}
+
+#[derive(Component)]
+struct GhostTile;
+
+/// Handle the mouse movement during tile placement
+fn placement_cursor_moved(
+    mut evr_cursor: EventReader<CursorMoved>,
+    q_camera: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
+    mut ghost: Query<(&mut Transform, &mut Visibility), With<GhostTile>>,
+) {
+    for cursor_moved in evr_cursor.read() {
+        let cursor = cursor_moved.position;
+        let (camera, camera_transform) = q_camera.single().unwrap();
+        let world_pos = camera
+            .viewport_to_world_2d(camera_transform, cursor)
+            .unwrap();
+
+        let grid_pos = GridPosition::from_world(world_pos);
+
+        let ghost_pos = grid_pos.to_world();
+        let ghost_pos: Vec3 = ghost_pos.extend(0.0);
+
+        let (mut ghost_transform, mut ghost_visibility) = ghost.single_mut().unwrap();
+        ghost_transform.translation = ghost_pos;
+        *ghost_visibility = Visibility::Visible;
+
+        // TODO: draw an outline showing the grid position,
+        // in the shape of the tile to be placed.
+
+        //info!("New cursor position {cursor}, world coords {world_pos}, grid pos {grid_pos}");
+    }
 }
 
 fn mouse_button_input(
@@ -72,11 +110,10 @@ fn mouse_button_input(
             let world_pos = camera
                 .viewport_to_world_2d(camera_transform, cursor)
                 .unwrap();
+            let grid_pos = GridPosition::from_world(world_pos);
 
-            debug!("left click, window coords {cursor} world coords {world_pos}",);
-            event_writer.write(NewTileEvent {
-                position: world_pos,
-            });
+            info!("left click, window coords {cursor} world coords {world_pos}",);
+            event_writer.write(NewTileEvent { position: grid_pos });
         } else {
             panic!("left button, can't find cursor position")
         }
@@ -89,9 +126,28 @@ fn spawn_new_tile(
     asset_server: Res<AssetServer>,
 ) {
     for new_tile_event in event_reader.read() {
-        commands.spawn((
-            Sprite::from_image(asset_server.load("temp1.png")),
-            Transform::from_translation((new_tile_event.position, 0.0).into()),
-        ));
+        let grid_position = new_tile_event.position;
+        let position = grid_position.to_world();
+        // Note z coordinate is > 0 so that it appears above the other tiles.
+        let position: Vec3 = (position, -1.0).into();
+
+        let mut sprite = Sprite::from_image(asset_server.load("path.png"));
+        sprite.anchor = Anchor::BottomCenter;
+
+        commands.spawn((sprite, Transform::from_translation(position), grid_position));
     }
+}
+
+/// Create a translucent tile showing where the next tile will be placed.
+///
+/// The sprite will have a `GhostTile` marker component.
+///
+/// This only needs to be done once.
+fn spawn_ghost_tile(commands: &mut Commands, asset_server: Res<AssetServer>) {
+    let mut sprite = Sprite::from_image(asset_server.load("path.png"));
+    sprite.color = Color::linear_rgba(1.0, 1.0, 1.0, 0.2);
+    // This anchor is imperfect as the pointer is always a bit right of center,
+    // but it's close enough for now.
+    sprite.anchor = Anchor::BottomCenter;
+    commands.spawn((sprite, Transform::default(), Visibility::Hidden, GhostTile));
 }
