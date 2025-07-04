@@ -133,7 +133,7 @@ fn spawn_new_tile(
     mut event_reader: EventReader<NewTileEvent>,
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    ghost: Query<&Tile, With<GhostTile>>,
+    ghost: Query<(&Sprite, &Tile), With<GhostTile>>,
 ) {
     for new_tile_event in event_reader.read() {
         let grid_position = new_tile_event.position;
@@ -141,9 +141,10 @@ fn spawn_new_tile(
         // Note z coordinate is > 0 so that it appears above the other tiles.
         let position: Vec3 = (position, -1.0).into();
 
-        let tile = ghost.single_inner().unwrap();
-        let sprite = tile.load_sprite(&asset_server);
-
+        let (ghost_sprite, tile) = ghost.single_inner().unwrap();
+        let mut sprite = tile.load_sprite(&asset_server);
+        sprite.flip_x = ghost_sprite.flip_x;
+        sprite.flip_y = ghost_sprite.flip_y;
         commands.spawn((sprite, Transform::from_translation(position), grid_position));
     }
 }
@@ -175,7 +176,7 @@ fn keyboard_inputs(
 ) {
     if keyboard.just_pressed(KeyCode::Space) {
         // toggle the ghost image
-        // FIXME: this is getting a little ridiculous; I should just despawn + respawn.
+        // FIXME: this is getting a little ridiculous; Maybe I should just despawn + respawn.
         let (mut sprite, mut tile, mut offset) = ghost.single_mut().unwrap();
 
         // Advance the ghost tile to the next tile type.
@@ -183,5 +184,13 @@ fn keyboard_inputs(
         *sprite = next_tile.load_sprite(&asset_server);
         *offset = next_tile.offset();
         *tile = next_tile;
+    }
+    if keyboard.just_pressed(KeyCode::ArrowLeft) {
+        let (mut sprite, _, _) = ghost.single_mut().unwrap();
+        sprite.flip_x = !sprite.flip_x;
+    }
+    if keyboard.just_pressed(KeyCode::ArrowUp) {
+        let (mut sprite, _, _) = ghost.single_mut().unwrap();
+        sprite.flip_y = !sprite.flip_y;
     }
 }
