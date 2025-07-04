@@ -123,8 +123,6 @@ fn mouse_button_input(
 
             info!("left click, window coords {cursor} world coords {world_pos}",);
             event_writer.write(NewTileEvent { position: grid_pos });
-        } else {
-            panic!("left button, can't find cursor position")
         }
     }
 }
