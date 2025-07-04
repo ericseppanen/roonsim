@@ -180,8 +180,11 @@ fn keyboard_inputs(
         let (mut sprite, mut tile, mut offset) = ghost.single_mut().unwrap();
 
         // Advance the ghost tile to the next tile type.
+        // Copy the previous `color` into the new sprite so we keep the alpha.
         let next_tile = tile.next();
+        let color = sprite.color;
         *sprite = next_tile.load_sprite(&asset_server);
+        sprite.color = color;
         *offset = next_tile.offset();
         *tile = next_tile;
     }
