@@ -16,6 +16,8 @@ use std::fmt::Display;
 use bevy::math::IVec2;
 use bevy::prelude::*;
 
+use crate::tile::Offset;
+
 /// quarter-granularity horizontal grid units
 const HORIZONTAL_GRID_PIXELS: i32 = 4;
 const VERTICAL_GRID_PIXELS: i32 = 16;
@@ -24,10 +26,22 @@ const VERTICAL_GRID_PIXELS: i32 = 16;
 pub struct GridPosition(pub IVec2);
 
 impl GridPosition {
-    /// Convert world coordinates to grid coordinates.
-    pub fn from_world(pos: Vec2) -> Self {
+    /// Convert world coordinates to grid coordinates, rounding as needed.
+    pub fn from_world(pos: Vec2, offset: Offset) -> Self {
         // FIXME: f32 -> i32 clamps large values; I would rather it panic.
-        let x = (pos.x / (HORIZONTAL_GRID_PIXELS as f32)).floor() as i32;
+        let mut x = (pos.x / (HORIZONTAL_GRID_PIXELS as f32)).floor() as i32;
+        match offset {
+            Offset::Even => {
+                if (x & 1) == 1 {
+                    x -= 1;
+                }
+            }
+            Offset::Odd => {
+                if (x & 1) == 0 {
+                    x += 1;
+                }
+            }
+        }
         let y = (pos.y / (VERTICAL_GRID_PIXELS as f32)).floor() as i32;
         Self(IVec2::new(x, y))
     }

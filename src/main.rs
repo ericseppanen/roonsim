@@ -1,9 +1,10 @@
 use bevy::prelude::*;
-use bevy::sprite::Anchor;
 use bevy::window::{PresentMode, PrimaryWindow, WindowResolution};
 use grid::GridPosition;
+use tile::{Offset, Tile};
 
 mod grid;
+mod tile;
 
 const PRESENT_MODE: PresentMode = if cfg!(target_family = "wasm") {
     PresentMode::Fifo
@@ -42,7 +43,10 @@ fn main() {
         .insert_resource(ClearColor(Color::srgb(0.3, 0.3, 0.3)))
         .add_event::<NewTileEvent>()
         .add_systems(Startup, setup)
-        .add_systems(Update, (placement_cursor_moved, mouse_button_input))
+        .add_systems(
+            Update,
+            (keyboard_inputs, placement_cursor_moved, mouse_button_input),
+        )
         .add_systems(Update, spawn_new_tile.after(mouse_button_input))
         .run();
 }
@@ -73,7 +77,7 @@ struct GhostTile;
 fn placement_cursor_moved(
     mut evr_cursor: EventReader<CursorMoved>,
     q_camera: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
-    mut ghost: Query<(&mut Transform, &mut Visibility), With<GhostTile>>,
+    mut ghost: Query<(&mut Transform, &mut Visibility, &Offset), With<GhostTile>>,
 ) {
     for cursor_moved in evr_cursor.read() {
         let cursor = cursor_moved.position;
@@ -82,12 +86,13 @@ fn placement_cursor_moved(
             .viewport_to_world_2d(camera_transform, cursor)
             .unwrap();
 
-        let grid_pos = GridPosition::from_world(world_pos);
+        let (mut ghost_transform, mut ghost_visibility, &offset) = ghost.single_mut().unwrap();
+
+        let grid_pos = GridPosition::from_world(world_pos, offset);
 
         let ghost_pos = grid_pos.to_world();
         let ghost_pos: Vec3 = ghost_pos.extend(0.0);
 
-        let (mut ghost_transform, mut ghost_visibility) = ghost.single_mut().unwrap();
         ghost_transform.translation = ghost_pos;
         *ghost_visibility = Visibility::Visible;
 
@@ -103,6 +108,7 @@ fn mouse_button_input(
     buttons: Res<ButtonInput<MouseButton>>,
     window: Single<&Window, With<PrimaryWindow>>,
     q_camera: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
+    ghost: Query<&Offset, With<GhostTile>>,
 ) {
     if buttons.just_pressed(MouseButton::Left) {
         if let Some(cursor) = window.cursor_position() {
@@ -110,7 +116,10 @@ fn mouse_button_input(
             let world_pos = camera
                 .viewport_to_world_2d(camera_transform, cursor)
                 .unwrap();
-            let grid_pos = GridPosition::from_world(world_pos);
+
+            let &offset = ghost.single().unwrap();
+
+            let grid_pos = GridPosition::from_world(world_pos, offset);
 
             info!("left click, window coords {cursor} world coords {world_pos}",);
             event_writer.write(NewTileEvent { position: grid_pos });
@@ -124,6 +133,7 @@ fn spawn_new_tile(
     mut event_reader: EventReader<NewTileEvent>,
     mut commands: Commands,
     asset_server: Res<AssetServer>,
+    ghost: Query<&Tile, With<GhostTile>>,
 ) {
     for new_tile_event in event_reader.read() {
         let grid_position = new_tile_event.position;
@@ -131,8 +141,8 @@ fn spawn_new_tile(
         // Note z coordinate is > 0 so that it appears above the other tiles.
         let position: Vec3 = (position, -1.0).into();
 
-        let mut sprite = Sprite::from_image(asset_server.load("path.png"));
-        sprite.anchor = Anchor::BottomCenter;
+        let tile = ghost.single_inner().unwrap();
+        let sprite = tile.load_sprite(&asset_server);
 
         commands.spawn((sprite, Transform::from_translation(position), grid_position));
     }
@@ -144,10 +154,34 @@ fn spawn_new_tile(
 ///
 /// This only needs to be done once.
 fn spawn_ghost_tile(commands: &mut Commands, asset_server: Res<AssetServer>) {
-    let mut sprite = Sprite::from_image(asset_server.load("path.png"));
-    sprite.color = Color::linear_rgba(1.0, 1.0, 1.0, 0.2);
-    // This anchor is imperfect as the pointer is always a bit right of center,
-    // but it's close enough for now.
-    sprite.anchor = Anchor::BottomCenter;
-    commands.spawn((sprite, Transform::default(), Visibility::Hidden, GhostTile));
+    let tile = Tile::default();
+    let offset = tile.offset();
+    let mut sprite = tile.load_sprite(&asset_server);
+    sprite.color = Color::linear_rgba(1.0, 1.0, 1.0, 0.3);
+    commands.spawn((
+        sprite,
+        Transform::default(),
+        Visibility::Hidden,
+        tile,
+        offset,
+        GhostTile,
+    ));
+}
+
+fn keyboard_inputs(
+    mut ghost: Query<(&mut Sprite, &mut Tile, &mut Offset), With<GhostTile>>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    asset_server: Res<AssetServer>,
+) {
+    if keyboard.just_pressed(KeyCode::Space) {
+        // toggle the ghost image
+        // FIXME: this is getting a little ridiculous; I should just despawn + respawn.
+        let (mut sprite, mut tile, mut offset) = ghost.single_mut().unwrap();
+
+        // Advance the ghost tile to the next tile type.
+        let next_tile = tile.next();
+        *sprite = next_tile.load_sprite(&asset_server);
+        *offset = next_tile.offset();
+        *tile = next_tile;
+    }
 }
