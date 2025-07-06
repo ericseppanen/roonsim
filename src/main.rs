@@ -1,10 +1,13 @@
 use bevy::prelude::*;
-use bevy::window::{PresentMode, PrimaryWindow, WindowResolution};
+use bevy::render::camera::Viewport;
+use bevy::window::{PresentMode, PrimaryWindow, WindowResized, WindowResolution};
 use grid::GridPosition;
 use tile::{GridExtent, Offset, Tile};
+use ui::{UI_PANEL_HEIGHT, UiTileSelected, button_system, init_ui};
 
 mod grid;
 mod tile;
+mod ui;
 
 const PRESENT_MODE: PresentMode = if cfg!(target_family = "wasm") {
     PresentMode::Fifo
@@ -13,7 +16,6 @@ const PRESENT_MODE: PresentMode = if cfg!(target_family = "wasm") {
 };
 
 fn main() {
-    bevy::log::info!("hello world");
     App::new()
         .add_plugins(
             DefaultPlugins
@@ -42,20 +44,57 @@ fn main() {
         )
         .insert_resource(ClearColor(Color::srgb(0.3, 0.3, 0.3)))
         .add_event::<NewTileEvent>()
+        .add_event::<UiTileSelected>()
         .add_systems(Startup, setup)
+        .add_systems(Update, (button_system, on_resize_system))
         .add_systems(
             Update,
-            (keyboard_inputs, placement_cursor_moved, mouse_button_input),
+            (
+                keyboard_inputs,
+                placement_cursor_moved,
+                mouse_button_input,
+                change_ghost_tile,
+            ),
         )
         .add_systems(Update, spawn_new_tile.after(mouse_button_input))
         .run();
 }
 
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
-    // Add the MainCamera marker component.
-    // FIXME: is this necessary?
-    commands.spawn((Camera2d, MainCamera));
+    // FIXME: unify this code with the window resize code.
+    let viewport = Viewport {
+        physical_position: UVec2::new(0, UI_PANEL_HEIGHT),
+        physical_size: UVec2::new(800, 700),
+        ..default()
+    };
+    let camera = Camera {
+        viewport: Some(viewport),
+        ..default()
+    };
+    commands.spawn((Camera2d, camera, MainCamera));
+    init_ui(&asset_server, &mut commands);
     spawn_ghost_tile(&mut commands, asset_server);
+}
+
+/// On window resize, recompute the camera viewport.
+fn on_resize_system(
+    mut resize_reader: EventReader<WindowResized>,
+    mut camera: Single<&mut Camera, With<MainCamera>>,
+    window: Single<&Window, With<PrimaryWindow>>,
+) {
+    for event in resize_reader.read() {
+        // Our window is 800x800 with scale factor 4.0
+        // This event gives us 200x200 (the logical size, I think?)
+        info!("window resize: {:.1} x {:.1}", event.width, event.height);
+
+        let scale = window.scale_factor();
+        let width = (event.width * scale) as u32;
+        let height = (event.height * scale) as u32;
+        let height = height.saturating_sub(UI_PANEL_HEIGHT);
+
+        let viewport = camera.viewport.as_mut().unwrap();
+        viewport.physical_size = UVec2::new(width, height);
+    }
 }
 
 /// Used to help identify our main camera
@@ -113,12 +152,20 @@ fn mouse_button_input(
     if buttons.just_pressed(MouseButton::Left) {
         if let Some(cursor) = window.cursor_position() {
             let (camera, camera_transform) = q_camera.single().unwrap();
+
+            let viewport_rect = camera.logical_viewport_rect().unwrap();
+            if !viewport_rect.contains(cursor) {
+                // click is outside viewport.
+                // It seems a bit silly that viewport_to_world_2d doesn't
+                // handle this.
+                return;
+            }
+
             let world_pos = camera
                 .viewport_to_world_2d(camera_transform, cursor)
                 .unwrap();
 
             let &offset = ghost.single().unwrap();
-
             let grid_pos = GridPosition::from_world(world_pos, offset);
 
             debug!("left click, window coords {cursor} world coords {world_pos}",);
@@ -145,12 +192,13 @@ fn spawn_new_tile(
 
         // Check if the new tile collides with any existing tiles.
         for existing_extent in existing_tiles {
-            info!("run collision check");
             if existing_extent.intersects(&new_tile_extent) {
-                info!("can't place tile due to collision");
+                debug!("can't place tile due to collision");
                 return;
             }
         }
+
+        info!("spawn {tile:?}");
 
         // Note z coordinate is > 0 so that it appears above the other tiles.
         let position: Vec3 = (position, -1.0).into();
@@ -188,30 +236,40 @@ fn spawn_ghost_tile(commands: &mut Commands, asset_server: Res<AssetServer>) {
 }
 
 fn keyboard_inputs(
-    mut ghost: Query<(&mut Sprite, &mut Tile, &mut Offset), With<GhostTile>>,
+    mut ghost: Query<(&mut Sprite, &Tile), With<GhostTile>>,
     keyboard: Res<ButtonInput<KeyCode>>,
-    asset_server: Res<AssetServer>,
+    mut event_writer: EventWriter<UiTileSelected>,
 ) {
     if keyboard.just_pressed(KeyCode::Space) {
-        // toggle the ghost image
-        // FIXME: this is getting a little ridiculous; Maybe I should just despawn + respawn.
-        let (mut sprite, mut tile, mut offset) = ghost.single_mut().unwrap();
-
-        // Advance the ghost tile to the next tile type.
-        // Copy the previous `color` into the new sprite so we keep the alpha.
-        let next_tile = tile.next();
-        let color = sprite.color;
-        *sprite = next_tile.load_sprite(&asset_server);
-        sprite.color = color;
-        *offset = next_tile.offset();
-        *tile = next_tile;
+        let (_, &tile) = ghost.single().unwrap();
+        event_writer.write(UiTileSelected(tile.next()));
     }
     if keyboard.just_pressed(KeyCode::ArrowLeft) {
-        let (mut sprite, _, _) = ghost.single_mut().unwrap();
+        let (mut sprite, _) = ghost.single_mut().unwrap();
         sprite.flip_x = !sprite.flip_x;
     }
     if keyboard.just_pressed(KeyCode::ArrowUp) {
-        let (mut sprite, _, _) = ghost.single_mut().unwrap();
+        let (mut sprite, _) = ghost.single_mut().unwrap();
         sprite.flip_y = !sprite.flip_y;
     }
+}
+
+fn change_ghost_tile(
+    mut event_reader: EventReader<UiTileSelected>,
+    mut ghost: Query<(&mut Sprite, &mut Tile, &mut Offset), With<GhostTile>>,
+    asset_server: Res<AssetServer>,
+) {
+    // If multiple events were queued, we only care about the last one.
+    let Some(&UiTileSelected(tile)) = event_reader.read().last() else {
+        return;
+    };
+
+    let (mut sprite, mut ghost_tile, mut offset) = ghost.single_mut().unwrap();
+
+    // Copy the previous `color` into the new sprite so we keep the alpha.
+    let color = sprite.color;
+    *sprite = tile.load_sprite(&asset_server);
+    sprite.color = color;
+    *offset = tile.offset();
+    *ghost_tile = tile;
 }

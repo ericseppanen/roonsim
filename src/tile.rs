@@ -17,20 +17,37 @@ pub enum Tile {
     Xor,
 }
 
+pub const ALL_TILES: &[Tile] = &[
+    Tile::Canute,
+    Tile::Shimmy,
+    Tile::Switch,
+    Tile::Turn,
+    Tile::Distributor,
+    Tile::LongTurn,
+    Tile::Path,
+    Tile::Swap,
+    Tile::Trap,
+    Tile::Xor,
+];
+
 impl Tile {
-    pub fn sprite_filename(&self) -> &'static str {
+    pub fn name(&self) -> &'static str {
         match self {
-            Tile::Canute => "canute.png",
-            Tile::Shimmy => "shimmy.png",
-            Tile::Switch => "switch.png",
-            Tile::Turn => "turn.png",
-            Tile::Distributor => "distributor.png",
-            Tile::LongTurn => "long_turn.png",
-            Tile::Path => "path.png",
-            Tile::Swap => "swap.png",
-            Tile::Trap => "trap.png",
-            Tile::Xor => "xor.png",
+            Tile::Canute => "canute",
+            Tile::Shimmy => "shimmy",
+            Tile::Switch => "switch",
+            Tile::Turn => "turn",
+            Tile::Distributor => "distributor",
+            Tile::LongTurn => "long_turn",
+            Tile::Path => "path",
+            Tile::Swap => "swap",
+            Tile::Trap => "trap",
+            Tile::Xor => "xor",
         }
+    }
+
+    pub fn sprite_filename(&self) -> String {
+        format!("{}.png", self.name())
     }
 
     pub fn grid_width(&self) -> i32 {
@@ -43,7 +60,7 @@ impl Tile {
         HORIZONTAL_GRID_UNITS_PER_SQUARE * squares
     }
 
-    pub fn load_sprite(&self, asset_server: &Res<AssetServer>) -> Sprite {
+    pub fn load_sprite(&self, asset_server: &AssetServer) -> Sprite {
         let mut sprite = Sprite::from_image(asset_server.load(self.sprite_filename()));
         // This anchor is imperfect as the pointer is always a bit right of center,
         // but it's close enough for now.
@@ -100,7 +117,7 @@ pub struct GridExtent {
 
 impl GridExtent {
     pub fn intersects(&self, other: &GridExtent) -> bool {
-        info!("intersects? {self:?} -- {other:?}");
+        debug!("intersects? {self:?} -- {other:?}");
 
         // wrong row
         if self.origin.0.y != other.origin.0.y {
