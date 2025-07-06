@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy::window::{PresentMode, PrimaryWindow, WindowResolution};
 use grid::GridPosition;
-use tile::{Offset, Tile};
+use tile::{GridExtent, Offset, Tile};
 
 mod grid;
 mod tile;
@@ -121,7 +121,7 @@ fn mouse_button_input(
 
             let grid_pos = GridPosition::from_world(world_pos, offset);
 
-            info!("left click, window coords {cursor} world coords {world_pos}",);
+            debug!("left click, window coords {cursor} world coords {world_pos}",);
             event_writer.write(NewTileEvent { position: grid_pos });
         }
     }
@@ -132,18 +132,38 @@ fn spawn_new_tile(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     ghost: Query<(&Sprite, &Tile), With<GhostTile>>,
+    existing_tiles: Query<&GridExtent, (With<Tile>, Without<GhostTile>)>,
 ) {
     for new_tile_event in event_reader.read() {
+        // Compute the world position of the new sprite.
         let grid_position = new_tile_event.position;
         let position = grid_position.to_world();
+        let (ghost_sprite, &tile) = ghost.single_inner().unwrap();
+
+        // Compute the extent of the tile (its width in grid coordinates)
+        let new_tile_extent = tile.extent(grid_position);
+
+        // Check if the new tile collides with any existing tiles.
+        for existing_extent in existing_tiles {
+            info!("run collision check");
+            if existing_extent.intersects(&new_tile_extent) {
+                info!("can't place tile due to collision");
+                return;
+            }
+        }
+
         // Note z coordinate is > 0 so that it appears above the other tiles.
         let position: Vec3 = (position, -1.0).into();
 
-        let (ghost_sprite, tile) = ghost.single_inner().unwrap();
         let mut sprite = tile.load_sprite(&asset_server);
         sprite.flip_x = ghost_sprite.flip_x;
         sprite.flip_y = ghost_sprite.flip_y;
-        commands.spawn((sprite, Transform::from_translation(position), grid_position));
+        commands.spawn((
+            sprite,
+            Transform::from_translation(position),
+            tile,
+            new_tile_extent,
+        ));
     }
 }
 
