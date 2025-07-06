@@ -47,7 +47,7 @@ impl GridPosition {
     }
 
     /// Convert grid coordinates to world coordinates.
-    pub fn to_world(&self) -> Vec2 {
+    pub fn to_world(self) -> Vec2 {
         // FIXME: i32 -> f32 is lossy at high values
         // Careful not to do integer division as the rounding
         // is wrong for negative numbers (and div_floor is unstable)
