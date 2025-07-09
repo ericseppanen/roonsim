@@ -3,14 +3,18 @@ use bevy::{
     render::{camera::Viewport, view::RenderLayers},
 };
 
-use crate::tile::{ALL_TILES, Tile};
+use crate::{
+    SimState,
+    tile::{ALL_TILES, Tile},
+};
 
+pub const UI_PANEL_WIDTH: u32 = 780;
 pub const UI_PANEL_HEIGHT: u32 = 64;
 
 pub fn init_ui(asset_server: &AssetServer, commands: &mut Commands) {
     let viewport = Viewport {
         physical_position: UVec2::new(0, 0),
-        physical_size: UVec2::new(600, UI_PANEL_HEIGHT),
+        physical_size: UVec2::new(UI_PANEL_WIDTH, UI_PANEL_HEIGHT),
         ..default()
     };
     let camera = Camera {
@@ -73,6 +77,54 @@ fn buttons_panel(asset_server: &AssetServer, parent: &mut ChildSpawnerCommands) 
             for &tile in ALL_TILES {
                 ui_tile_button(asset_server, parent, tile.name(), tile);
             }
+            ui_action_button(asset_server, parent, "D", Action::Delete);
+            ui_action_button(asset_server, parent, "<<", Action::Rewind);
+            ui_action_button(asset_server, parent, ">", Action::Play);
+            ui_action_button(asset_server, parent, "||", Action::Pause);
+        });
+}
+
+#[derive(Copy, Clone, Debug, Component)]
+pub enum Action {
+    Delete,
+    Rewind,
+    Play,
+    Pause,
+}
+
+fn ui_action_button(
+    asset_server: &AssetServer,
+    parent: &mut ChildSpawnerCommands,
+    caption: &str,
+    action: Action,
+) {
+    parent
+        .spawn((
+            action,
+            Button,
+            Node {
+                width: Val::Px(10.),
+                height: Val::Px(10.),
+                border: UiRect::all(Val::Px(0.5)),
+                padding: UiRect::all(Val::Px(1.0)),
+                margin: UiRect::all(Val::Px(1.0)),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BorderColor(Color::WHITE),
+            BackgroundColor(Color::srgb(0.25, 0.25, 0.25)),
+            //ImageNode::new(image),
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                Text::new(caption),
+                TextFont {
+                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                    font_size: 3.0,
+                    ..default()
+                },
+            ));
         });
 }
 
@@ -93,6 +145,7 @@ fn ui_tile_button(
                 height: Val::Px(10.),
                 border: UiRect::all(Val::Px(0.5)),
                 padding: UiRect::all(Val::Px(1.0)),
+                margin: UiRect::all(Val::Px(1.0)),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()
@@ -116,18 +169,41 @@ fn ui_tile_button(
 #[derive(Component)]
 pub struct UiPanelTile(Tile);
 
-pub fn button_system(
+#[expect(clippy::type_complexity)]
+pub fn tile_button_click(
     interaction_query: Query<
         (&Interaction, &ComputedNodeTarget, &UiPanelTile),
         (Changed<Interaction>, With<Button>),
     >,
-    mut event_writer: EventWriter<UiTileSelected>,
+    mut commands: Commands,
 ) {
-    //info!("button_system");
     for (interaction, _computed_target, &UiPanelTile(tile)) in &interaction_query {
         if let Interaction::Pressed = *interaction {
             info!("enter tile spawning mode for {tile:?}");
-            event_writer.write(UiTileSelected(tile));
+            commands.trigger(UiTileSelected(tile));
+        }
+    }
+}
+
+#[expect(clippy::type_complexity)]
+pub fn action_button_click(
+    interaction_query: Query<
+        (&Interaction, &ComputedNodeTarget, &Action),
+        (Changed<Interaction>, With<Button>),
+    >,
+    mut _commands: Commands,
+    mut next_state: ResMut<NextState<SimState>>,
+) {
+    for (interaction, _computed_target, &action) in &interaction_query {
+        if let Interaction::Pressed = *interaction {
+            info!("action button: {action:?}");
+            let state = match action {
+                Action::Delete => SimState::Deleting,
+                Action::Rewind => SimState::Idle, // FIXME: needs work
+                Action::Play => SimState::Running,
+                Action::Pause => SimState::Paused,
+            };
+            next_state.set(state);
         }
     }
 }

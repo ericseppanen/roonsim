@@ -3,11 +3,25 @@ use bevy::render::camera::Viewport;
 use bevy::window::{PresentMode, PrimaryWindow, WindowResized, WindowResolution};
 use grid::GridPosition;
 use tile::{GridExtent, Offset, Tile};
-use ui::{UI_PANEL_HEIGHT, UiTileSelected, button_system, init_ui};
+use ui::{UI_PANEL_HEIGHT, UiTileSelected, action_button_click, init_ui, tile_button_click};
 
 mod grid;
 mod tile;
 mod ui;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, States)]
+enum SimState {
+    #[default]
+    Idle,
+    /// Placing tiles.
+    Placing,
+    /// Deleting tiles.
+    Deleting,
+    /// Game is paused mid-simulation.
+    Paused,
+    /// Game simulation is running.
+    Running,
+}
 
 const PRESENT_MODE: PresentMode = if cfg!(target_family = "wasm") {
     PresentMode::Fifo
@@ -43,20 +57,35 @@ fn main() {
                 .build(),
         )
         .insert_resource(ClearColor(Color::srgb(0.3, 0.3, 0.3)))
-        .add_event::<NewTileEvent>()
+        .add_event::<MouseClick>()
         .add_event::<UiTileSelected>()
+        .add_event::<DespawnGhost>()
+        .init_state::<SimState>()
         .add_systems(Startup, setup)
-        .add_systems(Update, (button_system, on_resize_system))
         .add_systems(
             Update,
             (
-                keyboard_inputs,
-                placement_cursor_moved,
+                tile_button_click,
+                action_button_click,
+                on_resize_system,
                 mouse_button_input,
-                change_ghost_tile,
             ),
         )
-        .add_systems(Update, spawn_new_tile.after(mouse_button_input))
+        .add_systems(
+            Update,
+            (
+                placing_keyboard,
+                placement_cursor_moved,
+                mouseclick_place_tile,
+            )
+                .run_if(in_state(SimState::Placing)),
+        )
+        .add_systems(
+            Update,
+            mouseclick_delete_tile.run_if(in_state(SimState::Deleting)),
+        )
+        .add_observer(spawn_ghost_tile)
+        .add_observer(despawn_ghost_tile)
         .run();
 }
 
@@ -73,7 +102,6 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     };
     commands.spawn((Camera2d, camera, MainCamera));
     init_ui(&asset_server, &mut commands);
-    spawn_ghost_tile(&mut commands, asset_server);
 }
 
 /// On window resize, recompute the camera viewport.
@@ -103,12 +131,6 @@ fn on_resize_system(
 #[derive(Component)]
 struct MainCamera;
 
-/// User has requested placing a new tile.
-#[derive(Event)]
-pub struct NewTileEvent {
-    position: GridPosition,
-}
-
 #[derive(Component)]
 struct GhostTile;
 
@@ -127,7 +149,7 @@ fn placement_cursor_moved(
 
         let (mut ghost_transform, mut ghost_visibility, &offset) = ghost.single_mut().unwrap();
 
-        let grid_pos = GridPosition::from_world(world_pos, offset);
+        let grid_pos = GridPosition::from_world_with_offset(world_pos, offset);
 
         let ghost_pos = grid_pos.to_world();
         let ghost_pos: Vec3 = ghost_pos.extend(0.0);
@@ -142,12 +164,17 @@ fn placement_cursor_moved(
     }
 }
 
+#[derive(Clone, Copy, Debug, Event)]
+struct MouseClick {
+    world_pos: Vec2,
+}
+
+// Translate incoming mouse clicks into grid coordinates.
 fn mouse_button_input(
-    mut event_writer: EventWriter<NewTileEvent>,
+    mut event_writer: EventWriter<MouseClick>,
     buttons: Res<ButtonInput<MouseButton>>,
     window: Single<&Window, With<PrimaryWindow>>,
     q_camera: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
-    ghost: Query<&Offset, With<GhostTile>>,
 ) {
     if buttons.just_pressed(MouseButton::Left) {
         if let Some(cursor) = window.cursor_position() {
@@ -165,27 +192,43 @@ fn mouse_button_input(
                 .viewport_to_world_2d(camera_transform, cursor)
                 .unwrap();
 
-            let &offset = ghost.single().unwrap();
-            let grid_pos = GridPosition::from_world(world_pos, offset);
-
             debug!("left click, window coords {cursor} world coords {world_pos}",);
-            event_writer.write(NewTileEvent { position: grid_pos });
+            event_writer.write(MouseClick { world_pos });
         }
     }
 }
 
-fn spawn_new_tile(
-    mut event_reader: EventReader<NewTileEvent>,
+#[expect(clippy::type_complexity)]
+fn mouseclick_delete_tile(
+    mut event_reader: EventReader<MouseClick>,
+    existing_tiles: Query<(Entity, &GridExtent), (With<Tile>, Without<GhostTile>)>,
+    mut commands: Commands,
+) {
+    for mouse_click in event_reader.read() {
+        // Search for a tile that intersects the click position.
+        for (entity, extent) in existing_tiles {
+            if extent.contains(mouse_click.world_pos) {
+                debug!("deleting tile");
+                commands.entity(entity).despawn();
+                break;
+            }
+        }
+    }
+}
+
+fn mouseclick_place_tile(
+    mut event_reader: EventReader<MouseClick>,
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    ghost: Query<(&Sprite, &Tile), With<GhostTile>>,
+    ghost: Query<(&Sprite, &Tile, &Offset), With<GhostTile>>,
+
     existing_tiles: Query<&GridExtent, (With<Tile>, Without<GhostTile>)>,
 ) {
-    for new_tile_event in event_reader.read() {
+    for mouse_click in event_reader.read() {
         // Compute the world position of the new sprite.
-        let grid_position = new_tile_event.position;
+        let (ghost_sprite, &tile, &offset) = ghost.single_inner().unwrap();
+        let grid_position = GridPosition::from_world_with_offset(mouse_click.world_pos, offset);
         let position = grid_position.to_world();
-        let (ghost_sprite, &tile) = ghost.single_inner().unwrap();
 
         // Compute the extent of the tile (its width in grid coordinates)
         let new_tile_extent = tile.extent(grid_position);
@@ -215,34 +258,20 @@ fn spawn_new_tile(
     }
 }
 
-/// Create a translucent tile showing where the next tile will be placed.
-///
-/// The sprite will have a `GhostTile` marker component.
-///
-/// This only needs to be done once.
-fn spawn_ghost_tile(commands: &mut Commands, asset_server: Res<AssetServer>) {
-    let tile = Tile::default();
-    let offset = tile.offset();
-    let mut sprite = tile.load_sprite(&asset_server);
-    sprite.color = Color::linear_rgba(1.0, 1.0, 1.0, 0.3);
-    commands.spawn((
-        sprite,
-        Transform::default(),
-        Visibility::Hidden,
-        tile,
-        offset,
-        GhostTile,
-    ));
-}
-
-fn keyboard_inputs(
+fn placing_keyboard(
     mut ghost: Query<(&mut Sprite, &Tile), With<GhostTile>>,
     keyboard: Res<ButtonInput<KeyCode>>,
-    mut event_writer: EventWriter<UiTileSelected>,
+    mut commands: Commands,
+    mut next_state: ResMut<NextState<SimState>>,
 ) {
+    if keyboard.just_pressed(KeyCode::Escape) {
+        commands.trigger(DespawnGhost);
+        next_state.set(SimState::Idle);
+        return;
+    }
     if keyboard.just_pressed(KeyCode::Space) {
         let (_, &tile) = ghost.single().unwrap();
-        event_writer.write(UiTileSelected(tile.next()));
+        commands.trigger(UiTileSelected(tile.next()));
     }
     if keyboard.just_pressed(KeyCode::ArrowLeft) {
         let (mut sprite, _) = ghost.single_mut().unwrap();
@@ -254,22 +283,43 @@ fn keyboard_inputs(
     }
 }
 
-fn change_ghost_tile(
-    mut event_reader: EventReader<UiTileSelected>,
-    mut ghost: Query<(&mut Sprite, &mut Tile, &mut Offset), With<GhostTile>>,
+fn spawn_ghost_tile(
+    trigger: Trigger<UiTileSelected>,
+    mut commands: Commands,
     asset_server: Res<AssetServer>,
+    mut next_state: ResMut<NextState<SimState>>,
 ) {
-    // If multiple events were queued, we only care about the last one.
-    let Some(&UiTileSelected(tile)) = event_reader.read().last() else {
-        return;
-    };
+    commands.trigger(DespawnGhost);
 
-    let (mut sprite, mut ghost_tile, mut offset) = ghost.single_mut().unwrap();
+    let UiTileSelected(tile) = *trigger;
 
-    // Copy the previous `color` into the new sprite so we keep the alpha.
-    let color = sprite.color;
-    *sprite = tile.load_sprite(&asset_server);
-    sprite.color = color;
-    *offset = tile.offset();
-    *ghost_tile = tile;
+    let mut sprite = tile.load_sprite(&asset_server);
+    let offset = tile.offset();
+    // translucent tile to differentiate it from the already-placed tiles.
+    sprite.color = Color::linear_rgba(1.0, 1.0, 1.0, 0.3);
+    commands.spawn((
+        sprite,
+        // FIXME: the transform should be at the pointer location...
+        Transform::default(),
+        Visibility::Hidden,
+        tile,
+        offset,
+        GhostTile,
+    ));
+
+    next_state.set(SimState::Placing);
+}
+
+#[derive(Event)]
+struct DespawnGhost;
+
+fn despawn_ghost_tile(
+    _trigger: Trigger<DespawnGhost>,
+    mut commands: Commands,
+    mut ghost: Query<Entity, With<GhostTile>>,
+) {
+    // Despawn the previous ghost tile, if any.
+    if let Ok(ghost_entity) = ghost.single_mut() {
+        commands.entity(ghost_entity).despawn();
+    }
 }

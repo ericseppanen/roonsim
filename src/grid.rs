@@ -26,10 +26,9 @@ const VERTICAL_GRID_PIXELS: i32 = 16;
 pub struct GridPosition(pub IVec2);
 
 impl GridPosition {
-    /// Convert world coordinates to grid coordinates, rounding as needed.
-    pub fn from_world(pos: Vec2, offset: Offset) -> Self {
-        // FIXME: f32 -> i32 clamps large values; I would rather it panic.
-        let mut x = (pos.x / (HORIZONTAL_GRID_PIXELS as f32)).floor() as i32;
+    /// Convert world coordinates to grid coordinates, snapping to legal tile positions.
+    pub fn from_world_with_offset(pos: Vec2, offset: Offset) -> Self {
+        let GridPosition(IVec2 { mut x, y }) = Self::from_world(pos);
         match offset {
             Offset::Even => {
                 if (x & 1) == 1 {
@@ -42,6 +41,12 @@ impl GridPosition {
                 }
             }
         }
+        Self(IVec2::new(x, y))
+    }
+
+    /// Convert world coordinates to grid coordinates
+    pub fn from_world(pos: Vec2) -> Self {
+        let x = (pos.x / (HORIZONTAL_GRID_PIXELS as f32)).floor() as i32;
         let y = (pos.y / (VERTICAL_GRID_PIXELS as f32)).floor() as i32;
         Self(IVec2::new(x, y))
     }

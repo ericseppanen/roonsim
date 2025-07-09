@@ -116,6 +116,27 @@ pub struct GridExtent {
 }
 
 impl GridExtent {
+    /// Check if this extent contains a grid position.
+    pub fn contains(&self, world_pos: Vec2) -> bool {
+        let grid_pos = GridPosition::from_world(world_pos);
+
+        // wrong row
+        if self.origin.0.y != grid_pos.0.y {
+            return false;
+        }
+        // position is left of extent.
+        if grid_pos.0.x < self.origin.0.x {
+            return false;
+        }
+        // position is right of extent.
+        if grid_pos.0.x >= self.origin.0.x + self.width {
+            return false;
+        }
+        // position is within extent.
+        true
+    }
+
+    /// Check if this extent intersects another extent.
     pub fn intersects(&self, other: &GridExtent) -> bool {
         debug!("intersects? {self:?} -- {other:?}");
 
