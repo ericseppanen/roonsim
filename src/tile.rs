@@ -16,8 +16,11 @@ use crate::grid::{GridPosition, HORIZONTAL_GRID_PIXELS, VERTICAL_GRID_PIXELS};
 /// - 2: top edge
 #[expect(dead_code)]
 struct Io {
+    /// Places where marbles may enter.
     pub inputs: &'static [IoCoord],
+    /// Places where marbles may leave.
     pub outputs: &'static [IoCoord],
+    /// Places where marbles may stay put for a while.
     pub sticky: &'static [IoCoord],
 }
 
@@ -97,12 +100,63 @@ impl IoCoord {
     }
 }
 
+static CANUTE_IO: Io = Io {
+    inputs: &[],
+    outputs: &[IoCoord::bottom(2), IoCoord::top(4), IoCoord::top(6)],
+    sticky: &[],
+};
+
+static SHIMMY_IO: Io = Io {
+    inputs: &[],
+    outputs: &[IoCoord::top(3)],
+    sticky: &[],
+};
+
+static SWITCH_IO: Io = Io {
+    inputs: &[],
+    outputs: &[IoCoord::top(2), IoCoord::top(4), IoCoord::top(6)],
+    sticky: &[],
+};
+
+static TURN_IO: Io = Io {
+    inputs: &[],
+    outputs: &[IoCoord::bottom(2), IoCoord::bottom(6)],
+    sticky: &[],
+};
+
+static DISTRIBUTOR_IO: Io = Io {
+    inputs: &[],
+    outputs: &[IoCoord::top(2), IoCoord::top(6), IoCoord::top(10)],
+    sticky: &[],
+};
+
+static LONG_TURN_IO: Io = Io {
+    inputs: &[],
+    outputs: &[IoCoord::bottom(2), IoCoord::bottom(6), IoCoord::bottom(10)],
+    sticky: &[],
+};
+
 static PATH_IO: Io = Io {
-    // Places where marbles may enter.
     inputs: &[IoCoord::bottom(2)],
-    // Places where marbles may leave.
     outputs: &[IoCoord::top(2)],
-    // Places where marbles may stay put for a while.
+    sticky: &[],
+};
+
+static SWAP_IO: Io = Io {
+    inputs: &[],
+    outputs: &[IoCoord::top(2), IoCoord::top(6)],
+    sticky: &[],
+};
+
+static TRAP_IO: Io = Io {
+    inputs: &[],
+    outputs: &[IoCoord::top(2), IoCoord::top(6), IoCoord::top(8)],
+    sticky: &[],
+};
+
+static XOR_IO: Io = Io {
+    inputs: &[],
+    outputs: &[IoCoord::top(2), IoCoord::top(4), IoCoord::top(6)],
     sticky: &[],
 };
 
@@ -211,17 +265,22 @@ impl Tile {
 
     /// Return a list of output coordinates for this tile.
     pub fn outputs(&self) -> &'static [IoCoord] {
+        self.io().outputs
+    }
+
+    /// Get access to the `Io` struct for this tile.
+    fn io(&self) -> &'static Io {
         match self {
-            Tile::Canute => todo!(),
-            Tile::Shimmy => todo!(),
-            Tile::Switch => todo!(),
-            Tile::Turn => todo!(),
-            Tile::Distributor => todo!(),
-            Tile::LongTurn => todo!(),
-            Tile::Path => PATH_IO.outputs,
-            Tile::Swap => todo!(),
-            Tile::Trap => todo!(),
-            Tile::Xor => todo!(),
+            Tile::Canute => &CANUTE_IO,
+            Tile::Shimmy => &SHIMMY_IO,
+            Tile::Switch => &SWITCH_IO,
+            Tile::Turn => &TURN_IO,
+            Tile::Distributor => &DISTRIBUTOR_IO,
+            Tile::LongTurn => &LONG_TURN_IO,
+            Tile::Path => &PATH_IO,
+            Tile::Swap => &SWAP_IO,
+            Tile::Trap => &TRAP_IO,
+            Tile::Xor => &XOR_IO,
         }
     }
 }
