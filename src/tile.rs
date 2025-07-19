@@ -1,6 +1,110 @@
 use bevy::{prelude::*, sprite::Anchor};
 
-use crate::grid::GridPosition;
+use crate::grid::{GridPosition, HORIZONTAL_GRID_PIXELS, VERTICAL_GRID_PIXELS};
+
+/// The coordinates of marble locations within a tile.
+///
+/// Inputs are places where marbles may enter from an adjacent tile. Outputs are
+/// locations where marbles may exit the tile. Sticky points are places where marbles
+/// may reside until perturbed by another marble.
+///
+/// Each coordinate is (x,y) where x is 1/4 scale.
+///
+/// The allowed y coordinate values are:
+/// - 0: bottom edge
+/// - 1: middle (only makes sense for sticky)
+/// - 2: top edge
+#[expect(dead_code)]
+struct Io {
+    pub inputs: &'static [IoCoord],
+    pub outputs: &'static [IoCoord],
+    pub sticky: &'static [IoCoord],
+}
+
+/// The locations of inputs and outputs for a specific tile type.
+#[derive(Copy, Clone, Debug)]
+pub struct IoCoord {
+    /// The X coordinate, in 1/4 scale.
+    ///
+    /// For a 1x1 tile, the allowed values are 1, 2, or 3. 0 and 4 are the corners,
+    /// which is not allowed.
+    x: u8,
+    /// The Y coordinate is always 0 (bottom side), 1 (middle), or 2 (top side).
+    y: MarbleY,
+}
+
+/// Marble Y locations.
+///
+/// As a `u8` these values are 1/4 of the Y grid unit, i.e.
+/// `Bottom` is 25% from the bottom edge.
+#[derive(Copy, Clone, Debug)]
+#[repr(u8)]
+enum MarbleY {
+    Bottom = 1,
+    #[expect(dead_code)]
+    Middle = 2,
+    Top = 3,
+}
+
+impl IoCoord {
+    /// Create an `IoCoord` on the bottom edge of a tile.
+    const fn bottom(x: u8) -> Self {
+        Self {
+            x,
+            y: MarbleY::Bottom,
+        }
+    }
+
+    /// Create an `IoCoord` on the top edge of a tile.
+    const fn top(x: u8) -> Self {
+        Self { x, y: MarbleY::Top }
+    }
+
+    /// Convert to world coordinates, given a tile location.
+    ///
+    /// These coordinates will be inside the tile such that a ball 1/2 the
+    /// tile size will fit inside the tile perimeter.
+    pub fn to_world(self, tile_pos: GridExtent, flip_x: bool, flip_y: bool) -> Vec2 {
+        // first, compute the grid position for the tile origin, along with direction vectors
+        // ( +1 or -1 ) that indicate which direction to move the Io positions.
+        let mut x = tile_pos.origin.0.x;
+        let mut y = tile_pos.origin.0.y;
+        let mut x_direction = 1;
+        let mut y_direction = 1;
+
+        if flip_x {
+            x += tile_pos.width;
+            x_direction = -1;
+        }
+        if flip_y {
+            y += 1;
+            y_direction = -1;
+        }
+
+        // Add the X offset for the IoCoord.
+        x += x_direction * i32::from(self.x);
+        // The Y offset is in 1/4 grid unit.
+        let y_quarters = y_direction * self.y as i32;
+
+        // FIXME: this code should be moved to the `grid` module.
+        // Because the y grid can't represent fractions of a tile, we need to manually
+        // reproduce the logic from `GridPosition::to_world` here.
+        let x = (x * HORIZONTAL_GRID_PIXELS) as f32;
+        // We offset the y coordinate by 1/4 of a tile.
+        let y = (y * VERTICAL_GRID_PIXELS) + (y_quarters * VERTICAL_GRID_PIXELS / 4);
+        let y = y as f32;
+        vec2(x, y)
+    }
+}
+
+static PATH_IO: Io = Io {
+    // Places where marbles may enter.
+    inputs: &[IoCoord::bottom(2)],
+    // Places where marbles may leave.
+    outputs: &[IoCoord::top(2)],
+    // Places where marbles may stay put for a while.
+    sticky: &[],
+};
 
 #[derive(Debug, Copy, Clone, Default, Component)]
 pub enum Tile {
@@ -99,6 +203,27 @@ impl Tile {
             width: self.grid_width(),
         }
     }
+
+    /// Return a list of input coordinates for this tile.
+    pub fn _inputs(&self) -> &'static [IoCoord] {
+        todo!();
+    }
+
+    /// Return a list of output coordinates for this tile.
+    pub fn outputs(&self) -> &'static [IoCoord] {
+        match self {
+            Tile::Canute => todo!(),
+            Tile::Shimmy => todo!(),
+            Tile::Switch => todo!(),
+            Tile::Turn => todo!(),
+            Tile::Distributor => todo!(),
+            Tile::LongTurn => todo!(),
+            Tile::Path => PATH_IO.outputs,
+            Tile::Swap => todo!(),
+            Tile::Trap => todo!(),
+            Tile::Xor => todo!(),
+        }
+    }
 }
 
 /// Which offset (horizontal alignment) a tile has.
@@ -154,5 +279,20 @@ impl GridExtent {
         }
         // extents overlap
         true
+    }
+}
+
+#[derive(Debug, Clone, Copy, Component)]
+pub struct Marble;
+
+impl Marble {
+    pub fn sprite_filename() -> &'static str {
+        "marble.png"
+    }
+
+    pub fn load_sprite(asset_server: &AssetServer) -> Sprite {
+        let mut sprite = Sprite::from_image(asset_server.load(Self::sprite_filename()));
+        sprite.anchor = Anchor::Center;
+        sprite
     }
 }

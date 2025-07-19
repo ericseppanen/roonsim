@@ -19,8 +19,8 @@ use bevy::prelude::*;
 use crate::tile::Offset;
 
 /// quarter-granularity horizontal grid units
-const HORIZONTAL_GRID_PIXELS: i32 = 4;
-const VERTICAL_GRID_PIXELS: i32 = 16;
+pub const HORIZONTAL_GRID_PIXELS: i32 = 4;
+pub const VERTICAL_GRID_PIXELS: i32 = 16;
 
 #[derive(Clone, Copy, Debug, Component)]
 pub struct GridPosition(pub IVec2);

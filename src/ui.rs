@@ -5,7 +5,7 @@ use bevy::{
 
 use crate::{
     SimState,
-    tile::{ALL_TILES, Tile},
+    tile::{ALL_TILES, Marble, Tile},
 };
 
 pub const UI_PANEL_WIDTH: u32 = 780;
@@ -77,6 +77,7 @@ fn buttons_panel(asset_server: &AssetServer, parent: &mut ChildSpawnerCommands) 
             for &tile in ALL_TILES {
                 ui_tile_button(asset_server, parent, tile.name(), tile);
             }
+            ui_marble_button(asset_server, parent);
             ui_action_button(asset_server, parent, "D", Action::Delete);
             ui_action_button(asset_server, parent, "<<", Action::Rewind);
             ui_action_button(asset_server, parent, ">", Action::Play);
@@ -128,6 +129,7 @@ fn ui_action_button(
         });
 }
 
+/// Create a UI tile button.
 fn ui_tile_button(
     asset_server: &AssetServer,
     parent: &mut ChildSpawnerCommands,
@@ -166,8 +168,45 @@ fn ui_tile_button(
         });
 }
 
+/// Create the UI marble button.
+fn ui_marble_button(asset_server: &AssetServer, parent: &mut ChildSpawnerCommands) {
+    let image = asset_server.load(Marble::sprite_filename());
+
+    parent
+        .spawn((
+            UiPanelMarble,
+            Button,
+            Node {
+                width: Val::Px(10.),
+                height: Val::Px(10.),
+                border: UiRect::all(Val::Px(0.5)),
+                padding: UiRect::all(Val::Px(1.0)),
+                margin: UiRect::all(Val::Px(1.0)),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BorderColor(Color::WHITE),
+            BackgroundColor(Color::srgb(0.25, 0.25, 0.25)),
+            ImageNode::new(image),
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                Text::new("marble"),
+                TextFont {
+                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                    font_size: 2.0,
+                    ..default()
+                },
+            ));
+        });
+}
+
 #[derive(Component)]
 pub struct UiPanelTile(Tile);
+
+#[derive(Component)]
+pub struct UiPanelMarble;
 
 #[expect(clippy::type_complexity)]
 pub fn tile_button_click(
@@ -181,6 +220,22 @@ pub fn tile_button_click(
         if let Interaction::Pressed = *interaction {
             info!("enter tile spawning mode for {tile:?}");
             commands.trigger(UiTileSelected(tile));
+        }
+    }
+}
+
+#[expect(clippy::type_complexity)]
+pub fn marble_button_click(
+    interaction_query: Query<
+        (&Interaction, &ComputedNodeTarget, &UiPanelMarble),
+        (Changed<Interaction>, With<Button>),
+    >,
+    mut commands: Commands,
+) {
+    for (interaction, _computed_target, _) in &interaction_query {
+        if let Interaction::Pressed = *interaction {
+            info!("enter marble placing mode");
+            commands.trigger(UiMarbleSelected);
         }
     }
 }
@@ -211,3 +266,7 @@ pub fn action_button_click(
 /// User has selected a tile type for placement
 #[derive(Event)]
 pub struct UiTileSelected(pub Tile);
+
+/// User has selected a marble for placement
+#[derive(Event)]
+pub struct UiMarbleSelected;
