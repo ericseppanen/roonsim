@@ -230,12 +230,12 @@ pub fn marble_button_click(
         (&Interaction, &ComputedNodeTarget, &UiPanelMarble),
         (Changed<Interaction>, With<Button>),
     >,
-    mut commands: Commands,
+    mut next_state: ResMut<NextState<SimState>>,
 ) {
     for (interaction, _computed_target, _) in &interaction_query {
         if let Interaction::Pressed = *interaction {
             info!("enter marble placing mode");
-            commands.trigger(UiMarbleSelected);
+            next_state.set(SimState::PlacingMarbles);
         }
     }
 }
@@ -266,7 +266,3 @@ pub fn action_button_click(
 /// User has selected a tile type for placement
 #[derive(Event)]
 pub struct UiTileSelected(pub Tile);
-
-/// User has selected a marble for placement
-#[derive(Event)]
-pub struct UiMarbleSelected;

@@ -4,7 +4,6 @@ use crate::{
     MainCamera, MouseClick, SimState,
     grid::GridPosition,
     tile::{GridExtent, Marble, Tile},
-    ui::UiMarbleSelected,
 };
 
 pub struct MarblePlacePlugin;
@@ -18,9 +17,9 @@ impl Plugin for MarblePlacePlugin {
                 (marble_placement_cursor_moved, mouseclick_place_marble)
                     .run_if(in_state(SimState::PlacingMarbles)),
             )
-            .add_observer(show_marble_sockets)
-            .add_observer(spawn_ghost_marble)
-            .add_observer(despawn_ghost_marble);
+            .add_systems(OnEnter(SimState::PlacingMarbles), spawn_ghost_marble)
+            .add_systems(OnExit(SimState::PlacingMarbles), despawn_ghost_marble)
+            .add_observer(show_marble_sockets);
     }
 }
 
@@ -75,7 +74,7 @@ pub fn mouseclick_place_marble(
         //     }
         // }
 
-        info!("spawn marble");
+        debug!("spawn marble");
 
         // why -0.1 ? We need a bunch of constants for our Z heights.
         let position: Vec3 = (position, -0.1).into();
@@ -121,7 +120,6 @@ pub fn show_marble_sockets(
     sockets: Query<(Entity, Has<Disabled>), With<MarbleSocket>>,
 ) {
     let ShowMarbleSockets(show) = *trigger;
-    info!("show marble sockets: {show:?}");
     for (socket, disabled) in sockets {
         let mut ent = commands.entity(socket);
         match (show, disabled) {
@@ -142,15 +140,7 @@ pub struct GhostMarble;
 #[derive(Event)]
 pub struct DespawnMarble;
 
-#[derive(Event)]
-pub struct DespawnGhostMarble;
-
-pub fn spawn_ghost_marble(
-    _trigger: Trigger<UiMarbleSelected>,
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    mut next_state: ResMut<NextState<SimState>>,
-) {
+pub fn spawn_ghost_marble(mut commands: Commands, asset_server: Res<AssetServer>) {
     // Shouldn't be necessary; just being paranoid.
     commands.trigger(DespawnMarble);
 
@@ -166,15 +156,9 @@ pub fn spawn_ghost_marble(
 
     // Show the marble sockets
     commands.trigger(ShowMarbleSockets(true));
-
-    next_state.set(SimState::PlacingMarbles);
 }
 
-pub fn despawn_ghost_marble(
-    _trigger: Trigger<DespawnGhostMarble>,
-    mut commands: Commands,
-    mut ghost: Query<Entity, With<GhostMarble>>,
-) {
+pub fn despawn_ghost_marble(mut commands: Commands, mut ghost: Query<Entity, With<GhostMarble>>) {
     // Despawn the previous ghost marble, if any.
     if let Ok(ghost_entity) = ghost.single_mut() {
         commands.entity(ghost_entity).despawn();
