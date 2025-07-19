@@ -7,6 +7,23 @@ use crate::{
     ui::UiMarbleSelected,
 };
 
+pub struct MarblePlacePlugin;
+
+impl Plugin for MarblePlacePlugin {
+    fn build(&self, app: &mut App) {
+        app.add_event::<DespawnMarble>()
+            .add_event::<ShowMarbleSockets>()
+            .add_systems(
+                Update,
+                (marble_placement_cursor_moved, mouseclick_place_marble)
+                    .run_if(in_state(SimState::PlacingMarbles)),
+            )
+            .add_observer(show_marble_sockets)
+            .add_observer(spawn_ghost_marble)
+            .add_observer(despawn_ghost_marble);
+    }
+}
+
 /// Handle the mouse movement during marble placement
 pub fn marble_placement_cursor_moved(
     mut evr_cursor: EventReader<CursorMoved>,

@@ -8,6 +8,55 @@ use crate::{
     ui::UiTileSelected,
 };
 
+pub struct TilePlacePlugin;
+
+impl Plugin for TilePlacePlugin {
+    fn build(&self, app: &mut App) {
+        app.add_event::<DespawnGhostTile>()
+            .add_systems(
+                Update,
+                (
+                    placing_keyboard,
+                    tile_placement_cursor_moved,
+                    mouseclick_place_tile,
+                )
+                    .run_if(in_state(SimState::Placing)),
+            )
+            .add_systems(
+                Update,
+                mouseclick_delete_tile.run_if(in_state(SimState::Deleting)),
+            )
+            .add_observer(spawn_ghost_tile)
+            .add_observer(despawn_ghost_tile);
+    }
+}
+
+pub fn placing_keyboard(
+    mut ghost: Query<(&mut Sprite, &Tile), With<GhostTile>>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut commands: Commands,
+    mut next_state: ResMut<NextState<SimState>>,
+) {
+    if keyboard.just_pressed(KeyCode::Escape) {
+        // FIXME: can I make an observer for "leaving tile placing mode"?
+        commands.trigger(DespawnGhostTile);
+        next_state.set(SimState::Idle);
+        return;
+    }
+    if keyboard.just_pressed(KeyCode::Space) {
+        let (_, &tile) = ghost.single().unwrap();
+        commands.trigger(UiTileSelected(tile.next()));
+    }
+    if keyboard.just_pressed(KeyCode::ArrowLeft) {
+        let (mut sprite, _) = ghost.single_mut().unwrap();
+        sprite.flip_x = !sprite.flip_x;
+    }
+    if keyboard.just_pressed(KeyCode::ArrowUp) {
+        let (mut sprite, _) = ghost.single_mut().unwrap();
+        sprite.flip_y = !sprite.flip_y;
+    }
+}
+
 #[expect(clippy::type_complexity)]
 pub fn mouseclick_delete_tile(
     mut event_reader: EventReader<MouseClick>,

@@ -1,16 +1,8 @@
 use bevy::prelude::*;
 use bevy::render::camera::Viewport;
 use bevy::window::{PresentMode, PrimaryWindow, WindowResized, WindowResolution};
-use place_marble::{
-    DespawnGhostMarble, DespawnMarble, ShowMarbleSockets, despawn_ghost_marble,
-    marble_placement_cursor_moved, mouseclick_place_marble, show_marble_sockets,
-    spawn_ghost_marble,
-};
-use place_tile::{
-    DespawnGhostTile, GhostTile, despawn_ghost_tile, mouseclick_delete_tile, mouseclick_place_tile,
-    spawn_ghost_tile, tile_placement_cursor_moved,
-};
-use tile::Tile;
+use place_marble::MarblePlacePlugin;
+use place_tile::TilePlacePlugin;
 use ui::{
     UI_PANEL_HEIGHT, UiTileSelected, action_button_click, init_ui, marble_button_click,
     tile_button_click,
@@ -71,12 +63,10 @@ fn main() {
                 })
                 .build(),
         )
+        .add_plugins((TilePlacePlugin, MarblePlacePlugin))
         .insert_resource(ClearColor(Color::srgb(0.3, 0.3, 0.3)))
         .add_event::<MouseClick>()
         .add_event::<UiTileSelected>()
-        .add_event::<DespawnGhostTile>()
-        .add_event::<DespawnMarble>()
-        .add_event::<ShowMarbleSockets>()
         .init_state::<SimState>()
         .add_systems(Startup, setup)
         .add_systems(
@@ -89,29 +79,6 @@ fn main() {
                 mouse_button_input,
             ),
         )
-        .add_systems(
-            Update,
-            (
-                placing_keyboard,
-                tile_placement_cursor_moved,
-                mouseclick_place_tile,
-            )
-                .run_if(in_state(SimState::Placing)),
-        )
-        .add_systems(
-            Update,
-            (marble_placement_cursor_moved, mouseclick_place_marble)
-                .run_if(in_state(SimState::PlacingMarbles)),
-        )
-        .add_systems(
-            Update,
-            mouseclick_delete_tile.run_if(in_state(SimState::Deleting)),
-        )
-        .add_observer(spawn_ghost_tile)
-        .add_observer(despawn_ghost_tile)
-        .add_observer(show_marble_sockets)
-        .add_observer(spawn_ghost_marble)
-        .add_observer(despawn_ghost_marble)
         .run();
 }
 
@@ -188,32 +155,5 @@ fn mouse_button_input(
             debug!("left click, window coords {cursor} world coords {world_pos}",);
             event_writer.write(MouseClick { world_pos });
         }
-    }
-}
-
-fn placing_keyboard(
-    mut ghost: Query<(&mut Sprite, &Tile), With<GhostTile>>,
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mut commands: Commands,
-    mut next_state: ResMut<NextState<SimState>>,
-) {
-    if keyboard.just_pressed(KeyCode::Escape) {
-        // FIXME: can I make an observer for "leaving tile placing mode"?
-        commands.trigger(DespawnGhostTile);
-        commands.trigger(DespawnGhostMarble);
-        next_state.set(SimState::Idle);
-        return;
-    }
-    if keyboard.just_pressed(KeyCode::Space) {
-        let (_, &tile) = ghost.single().unwrap();
-        commands.trigger(UiTileSelected(tile.next()));
-    }
-    if keyboard.just_pressed(KeyCode::ArrowLeft) {
-        let (mut sprite, _) = ghost.single_mut().unwrap();
-        sprite.flip_x = !sprite.flip_x;
-    }
-    if keyboard.just_pressed(KeyCode::ArrowUp) {
-        let (mut sprite, _) = ghost.single_mut().unwrap();
-        sprite.flip_y = !sprite.flip_y;
     }
 }
