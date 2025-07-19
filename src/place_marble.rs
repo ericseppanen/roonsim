@@ -39,7 +39,7 @@ pub fn marble_placement_cursor_moved(
 
         let mut ghost_transform = ghost.single_mut().unwrap();
 
-        let grid_pos = GridPosition::from_world(world_pos);
+        let grid_pos = GridPosition::from_world_rounded(world_pos);
 
         let ghost_pos = grid_pos.to_world();
         let ghost_pos: Vec3 = ghost_pos.extend(0.0);
@@ -62,7 +62,7 @@ pub fn mouseclick_place_marble(
 ) {
     for mouse_click in event_reader.read() {
         // Compute the world position of the new marble.
-        let grid_pos = GridPosition::from_world(mouse_click.world_pos);
+        let grid_pos = GridPosition::from_world_rounded(mouse_click.world_pos);
         let position = grid_pos.to_world();
 
         // FIXME: maybe click on an existing marble should delete it?

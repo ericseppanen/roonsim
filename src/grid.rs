@@ -44,10 +44,17 @@ impl GridPosition {
         Self(IVec2::new(x, y))
     }
 
-    /// Convert world coordinates to grid coordinates
+    /// Convert world coordinates to grid coordinates, rounding towards negative infinity.
     pub fn from_world(pos: Vec2) -> Self {
         let x = (pos.x / (HORIZONTAL_GRID_PIXELS as f32)).floor() as i32;
         let y = (pos.y / (VERTICAL_GRID_PIXELS as f32)).floor() as i32;
+        Self(IVec2::new(x, y))
+    }
+
+    /// Convert world coordinates to grid coordinates, rounding towards nearest `GridPosition`.
+    pub fn from_world_rounded(pos: Vec2) -> Self {
+        let x = (pos.x / (HORIZONTAL_GRID_PIXELS as f32)).round() as i32;
+        let y = (pos.y / (VERTICAL_GRID_PIXELS as f32)).round() as i32;
         Self(IVec2::new(x, y))
     }
 
