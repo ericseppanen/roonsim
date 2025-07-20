@@ -1,19 +1,12 @@
 use bevy::{prelude::*, sprite::Anchor};
 
-use crate::grid::{GridPosition, HORIZONTAL_GRID_PIXELS, VERTICAL_GRID_PIXELS};
+use crate::grid::{GRID_UNITS_PER_TILE, GridPosition};
 
 /// The coordinates of marble locations within a tile.
 ///
 /// Inputs are places where marbles may enter from an adjacent tile. Outputs are
 /// locations where marbles may exit the tile. Sticky points are places where marbles
 /// may reside until perturbed by another marble.
-///
-/// Each coordinate is (x,y) where x is 1/4 scale.
-///
-/// The allowed y coordinate values are:
-/// - 0: bottom edge
-/// - 1: middle (only makes sense for sticky)
-/// - 2: top edge
 #[expect(dead_code)]
 struct Io {
     /// Places where marbles may enter.
@@ -27,7 +20,7 @@ struct Io {
 /// The locations of inputs and outputs for a specific tile type.
 #[derive(Copy, Clone, Debug)]
 pub struct IoCoord {
-    /// The X coordinate, in 1/4 scale.
+    /// The X coordinate, in grid units.
     ///
     /// For a 1x1 tile, the allowed values are 1, 2, or 3. 0 and 4 are the corners,
     /// which is not allowed.
@@ -38,7 +31,7 @@ pub struct IoCoord {
 
 /// Marble Y locations.
 ///
-/// As a `u8` these values are 1/4 of the Y grid unit, i.e.
+/// As a `u8` these values are in grid unit, i.e.
 /// `Bottom` is 25% from the bottom edge.
 #[derive(Copy, Clone, Debug)]
 #[repr(u8)]
@@ -47,6 +40,13 @@ enum MarbleY {
     #[expect(dead_code)]
     Middle = 2,
     Top = 3,
+}
+
+impl MarbleY {
+    /// Convert the marble Y location to a grid offset.
+    fn to_grid(self) -> i32 {
+        self as i32
+    }
 }
 
 impl IoCoord {
@@ -84,19 +84,11 @@ impl IoCoord {
             y_direction = -1;
         }
 
-        // Add the X offset for the IoCoord.
+        // Add the offset for the IoCoord, so that the tile doesn't move when flipped.
         x += x_direction * i32::from(self.x);
-        // The Y offset is in 1/4 grid unit.
-        let y_quarters = y_direction * self.y as i32;
+        y += y_direction * self.y.to_grid();
 
-        // FIXME: this code should be moved to the `grid` module.
-        // Because the y grid can't represent fractions of a tile, we need to manually
-        // reproduce the logic from `GridPosition::to_world` here.
-        let x = (x * HORIZONTAL_GRID_PIXELS) as f32;
-        // We offset the y coordinate by 1/4 of a tile.
-        let y = (y * VERTICAL_GRID_PIXELS) + (y_quarters * VERTICAL_GRID_PIXELS / 4);
-        let y = y as f32;
-        vec2(x, y)
+        GridPosition(ivec2(x, y)).to_world()
     }
 }
 
@@ -209,13 +201,12 @@ impl Tile {
     }
 
     pub fn grid_width(&self) -> i32 {
-        const HORIZONTAL_GRID_UNITS_PER_SQUARE: i32 = 4;
         let squares = match self {
             Tile::Path | Tile::Shimmy => 1,
             Tile::Canute | Tile::Swap | Tile::Switch | Tile::Turn | Tile::Xor => 2,
             Tile::Distributor | Tile::LongTurn | Tile::Trap => 3,
         };
-        HORIZONTAL_GRID_UNITS_PER_SQUARE * squares
+        GRID_UNITS_PER_TILE * squares
     }
 
     pub fn load_sprite(&self, asset_server: &AssetServer) -> Sprite {
@@ -302,7 +293,7 @@ pub struct GridExtent {
 impl GridExtent {
     /// Check if this extent contains a grid position.
     pub fn contains(&self, world_pos: Vec2) -> bool {
-        let grid_pos = GridPosition::from_world(world_pos);
+        let grid_pos = GridPosition::from_world_snap_row(world_pos);
 
         // wrong row
         if self.origin.0.y != grid_pos.0.y {
