@@ -17,18 +17,6 @@ struct Io {
     pub sticky: &'static [IoCoord],
 }
 
-/// The locations of inputs and outputs for a specific tile type.
-#[derive(Copy, Clone, Debug)]
-pub struct IoCoord {
-    /// The X coordinate, in grid units.
-    ///
-    /// For a 1x1 tile, the allowed values are 1, 2, or 3. 0 and 4 are the corners,
-    /// which is not allowed.
-    x: u8,
-    /// The Y coordinate is always 0 (bottom side), 1 (middle), or 2 (top side).
-    y: MarbleY,
-}
-
 /// Marble Y locations.
 ///
 /// As a `u8` these values are in grid unit, i.e.
@@ -49,6 +37,18 @@ impl MarbleY {
     }
 }
 
+/// The locations of inputs and outputs for a specific tile type.
+#[derive(Copy, Clone, Debug)]
+pub struct IoCoord {
+    /// The X coordinate, in grid units.
+    ///
+    /// For a 1x1 tile, the allowed values are 1, 2, or 3. 0 and 4 are the corners,
+    /// which is not allowed.
+    x: u8,
+    /// The Y coordinate is always 0 (bottom side), 1 (middle), or 2 (top side).
+    y: MarbleY,
+}
+
 impl IoCoord {
     /// Create an `IoCoord` on the bottom edge of a tile.
     const fn bottom(x: u8) -> Self {
@@ -63,11 +63,11 @@ impl IoCoord {
         Self { x, y: MarbleY::Top }
     }
 
-    /// Convert to world coordinates, given a tile location.
+    /// Convert to grid coordinates, given a tile location.
     ///
     /// These coordinates will be inside the tile such that a ball 1/2 the
     /// tile size will fit inside the tile perimeter.
-    pub fn to_world(self, tile_pos: GridExtent, flip_x: bool, flip_y: bool) -> Vec2 {
+    pub fn to_grid(self, tile_pos: GridExtent, flip_x: bool, flip_y: bool) -> GridPosition {
         // first, compute the grid position for the tile origin, along with direction vectors
         // ( +1 or -1 ) that indicate which direction to move the Io positions.
         let mut x = tile_pos.origin.0.x;
@@ -88,7 +88,7 @@ impl IoCoord {
         x += x_direction * i32::from(self.x);
         y += y_direction * self.y.to_grid();
 
-        GridPosition(ivec2(x, y)).to_world()
+        GridPosition(ivec2(x, y))
     }
 }
 

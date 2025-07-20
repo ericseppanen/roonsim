@@ -23,7 +23,7 @@ use crate::tile::Offset;
 pub const GRID_UNITS_PER_TILE: i32 = 4;
 pub const PIXELS_PER_GRID_UNIT: i32 = 4;
 
-#[derive(Clone, Copy, Debug, Component)]
+#[derive(Clone, Copy, Debug, PartialEq, Component)]
 pub struct GridPosition(pub IVec2);
 
 impl GridPosition {
@@ -65,6 +65,15 @@ impl GridPosition {
         let x = (self.0.x * PIXELS_PER_GRID_UNIT) as f32;
         let y = (self.0.y * PIXELS_PER_GRID_UNIT) as f32;
         vec2(x, y)
+    }
+
+    // Give the absolute X and Y distance to another grid position.
+    pub fn distance_to(self, other: GridPosition) -> UVec2 {
+        let x_dist = self.0.x - other.0.x;
+        let y_dist = self.0.y - other.0.y;
+        let x_dist = x_dist.abs().try_into().unwrap();
+        let y_dist = y_dist.abs().try_into().unwrap();
+        uvec2(x_dist, y_dist)
     }
 }
 

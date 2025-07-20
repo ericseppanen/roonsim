@@ -56,23 +56,35 @@ pub fn mouseclick_place_marble(
     mut event_reader: EventReader<MouseClick>,
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-
-    _existing_marbles: Query<&GridExtent, (With<Marble>, Without<GhostMarble>)>,
+    sockets: Query<&GridPosition, With<MarbleSocket>>,
+    existing_marbles: Query<&GridPosition, With<Marble>>,
 ) {
     for mouse_click in event_reader.read() {
         // Compute the world position of the new marble.
         let grid_pos = GridPosition::from_world(mouse_click.world_pos);
         let position = grid_pos.to_world();
 
-        // FIXME: maybe click on an existing marble should delete it?
+        // Check if the position contains a socket.
+        if !sockets
+            .into_iter()
+            .any(|&socket_position| socket_position == grid_pos)
+        {
+            info!("tried to place marble at non-socket location");
+            return;
+        }
 
-        // // Check if the new tile collides with any existing marbles.
-        // for existing_extent in existing_marbles {
-        //     if existing_extent.intersects(&new_tile_extent) {
-        //         debug!("can't place tile due to collision");
-        //         return;
-        //     }
-        // }
+        // FIXME: maybe a click on an existing marble should delete it?
+
+        // Check if the new tile collides with any existing marbles.
+        for &existing_grid_pos in existing_marbles {
+            let (x, y) = grid_pos.distance_to(existing_grid_pos).into();
+            // FIXME: this inequality may be silly, as there are
+            // no marble sockets 1 unit away from one another.
+            if x <= 1 && y <= 1 {
+                info!("attempted marble placement collides with an existing marble");
+                return;
+            }
+        }
 
         debug!("spawn marble");
 
@@ -80,7 +92,12 @@ pub fn mouseclick_place_marble(
         let position: Vec3 = (position, -0.1).into();
 
         let sprite = Marble::load_sprite(&asset_server);
-        commands.spawn((sprite, Transform::from_translation(position), Marble));
+        commands.spawn((
+            sprite,
+            Transform::from_translation(position),
+            grid_pos,
+            Marble,
+        ));
     }
 }
 
@@ -105,11 +122,13 @@ pub fn place_marble_sockets(
 
     // FIXME: this entity should be a child of the tile entity.
     for io_coord in tile.outputs() {
-        let position = io_coord.to_world(extent, flip_x, flip_y);
+        let grid_position = io_coord.to_grid(extent, flip_x, flip_y);
+        let position = grid_position.to_world();
         let position: Vec3 = (position, -0.5).into();
         commands.spawn((
             sprite.clone(),
             Transform::from_translation(position),
+            grid_position,
             MarbleSocket,
             // NOTE: bevy #18981 makes `Disabled` not work correctly if it's attached
             // to the entity at spawn time.
