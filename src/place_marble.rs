@@ -1,4 +1,4 @@
-use bevy::{ecs::entity_disabling::Disabled, prelude::*};
+use bevy::prelude::*;
 
 use crate::{
     MainCamera, MouseClick, SimState,
@@ -87,6 +87,11 @@ pub fn mouseclick_place_marble(
 #[derive(Component)]
 pub struct MarbleSocket;
 
+/// Place MarbleSocket entities.
+///
+/// Marble sockets mark the places where it is legal to place marbles.
+/// They are invisible (Disabled) unless we're in the marble placement
+/// state.
 pub fn place_marble_sockets(
     commands: &mut Commands,
     asset_server: &AssetServer,
@@ -106,7 +111,9 @@ pub fn place_marble_sockets(
             sprite.clone(),
             Transform::from_translation(position),
             MarbleSocket,
-            Disabled,
+            // NOTE: bevy #18981 makes `Disabled` not work correctly if it's attached
+            // to the entity at spawn time.
+            Visibility::Hidden,
         ));
     }
 }
@@ -116,20 +123,14 @@ pub struct ShowMarbleSockets(bool);
 
 pub fn show_marble_sockets(
     trigger: Trigger<ShowMarbleSockets>,
-    mut commands: Commands,
-    sockets: Query<(Entity, Has<Disabled>), With<MarbleSocket>>,
+    sockets: Query<&mut Visibility, With<MarbleSocket>>,
 ) {
     let ShowMarbleSockets(show) = *trigger;
-    for (socket, disabled) in sockets {
-        let mut ent = commands.entity(socket);
-        match (show, disabled) {
-            (true, true) => {
-                ent.remove::<Disabled>();
-            }
-            (false, false) => {
-                ent.insert(Disabled);
-            }
-            _ => {}
+    for mut socket_visibility in sockets {
+        if show {
+            *socket_visibility = Visibility::Visible;
+        } else {
+            *socket_visibility = Visibility::Hidden;
         }
     }
 }
